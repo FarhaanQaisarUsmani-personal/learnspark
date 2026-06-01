@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LearnSpark – Dashboard</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="toast"></div>
+  <div id="loading"><div class="spinner"></div><div class="loading-text">Loading dashboard…</div></div>
+
+  <div class="app-wrap">
+    <nav class="sidebar" id="sidebar"></nav>
+    <div class="main-area">
+      <header class="topbar" id="topbar"></header>
+      <main class="page" id="page-content"></main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+  (async () => {
+    const user = await requireAuth(['student', 'teacher', 'admin']);
+    if (!user) return;
+
+    buildSidebar(user, 'dashboard');
+    buildTopbar('Dashboard');
+
+    const content = document.getElementById('page-content');
+
+    if (user.role === 'student') await renderStudentDash(user, content);
+    else if (user.role === 'teacher') await renderTeacherDash(user, content);
+    else if (user.role === 'admin') await renderAdminDash(user, content);
+
+    hideLoading();
+  })();
+
+  async function renderStudentDash(user, el) {
+    const [progress, quizResults, completedIds, subjects] = await Promise.all([
+      getProgress(user.id),
+      getQuizResults(user.id),
+      getCompletedLessons(user.id),
+      getSubjects(),
+    ]);
+
+    const totalDone = completedIds.length;
+    const avgScore = quizResults.length
+      ? Math.round(quizResults.reduce((a, r) => a + r.percentage, 0) / quizResults.length)
+      : 0;
+    const badges = await getBadges(user.id);
+
+    const progMap = {};
+    progress.forEach(p => { progMap[p.subjects?.slug] = p.percent_complete || 0; });
+
+    el.innerHTML = `
+      <div class="motiv-bar">
+        <div class="motiv-icon">🌟</div>
+        <div>
+          <div class="motiv-text">Great work, ${user.display_name.split(' ')[0]}! Keep learning every day!</div>
+          <div class="motiv-sub">3 subjects · 9 weeks of content ready for you this summer</div>
+        </div>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-icon" style="background:var(--math-bg)">📚</div><div><div class="stat-val">3</div><div class="stat-label">Subjects</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--eng-bg)">✅</div><div><div class="stat-val">${totalDone}</div><div class="stat-label">Lessons done</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--sci-bg)">🎯</div><div><div class="stat-val">${quizResults.length}</div><div class="stat-label">Quizzes taken</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--acc-bg)">🏅</div><div><div class="stat-val">${badges.length}</div><div class="stat-label">Badges earned</div></div></div>
+      </div>
+
+      <div class="sec-hdr"><div class="sec-title">Your Subjects</div></div>
+      <div class="subject-grid">
+        ${['math','sci','eng'].map(slug => {
+          const sub = SUBJECT_META[slug];
+          const pct = progMap[slug] || 0;
+          return `<div class="subject-card ${slug}" data-subj="${slug}" style="cursor:pointer">
+            <div class="subject-icon">${sub.icon}</div>
+            <div class="subject-name">${sub.name}</div>
+            <div class="subject-desc">${pct}% complete · 3 weeks</div>
+            <div class="subject-prog-bar"><div class="subject-prog-fill" style="width:${pct}%"></div></div>
+          </div>`;
+        }).join('')}
+      </div>
+
+      <div class="flex-row">
+        <div class="flex-1">
+          <div class="sec-hdr"><div class="sec-title">Recent Quiz Scores</div></div>
+          <div class="card">
+            ${quizResults.length ? `
+              <table class="data-table">
+                <thead><tr><th>Subject</th><th>Week</th><th>Score</th><th>Grade</th></tr></thead>
+                <tbody>
+                  ${quizResults.slice(0, 5).map(r => `<tr>
+                    <td>${subjTag(r.weeks?.subjects?.slug)}</td>
+                    <td style="font-weight:700">Week ${r.weeks?.week_number}</td>
+                    <td><strong>${r.percentage}%</strong></td>
+                    <td><span class="tag ${r.percentage >= 80 ? 'tag-ok' : 'tag-warn'}">${r.percentage >= 80 ? 'Excellent' : 'Good'}</span></td>
+                  </tr>`).join('')}
+                </tbody>
+              </table>` : '<p style="font-size:13px;color:var(--tx3)">No quizzes taken yet. Start a subject to begin!</p>'}
+          </div>
+        </div>
+        <div class="flex-col-220">
+          <div class="sec-hdr"><div class="sec-title">Progress</div></div>
+          <div class="card">
+            ${renderProgBar('Mathematics', progMap.math || 0, 'prog-math')}
+            ${renderProgBar('Science', progMap.sci || 0, 'prog-sci')}
+            ${renderProgBar('English', progMap.eng || 0, 'prog-eng')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Subject card navigation
+    el.querySelectorAll('[data-subj]').forEach(card => {
+      card.addEventListener('click', () => {
+        window.location.href = `subject.html?subj=${card.dataset.subj}`;
+      });
+    });
+  }
+
+  async function renderTeacherDash(user, el) {
+    el.innerHTML = `
+      <div class="motiv-bar">
+        <div class="motiv-icon">👩‍🏫</div>
+        <div>
+          <div class="motiv-text">Welcome, ${user.display_name}!</div>
+          <div class="motiv-sub">Manage lessons, quizzes, and review student progress from the sidebar.</div>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-icon" style="background:var(--math-bg)">📚</div><div><div class="stat-val">3</div><div class="stat-label">Subjects</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--sci-bg)">📝</div><div><div class="stat-val">9</div><div class="stat-label">Lessons</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--eng-bg)">🎯</div><div><div class="stat-val">9</div><div class="stat-label">Quizzes</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--acc-bg)">👩‍🎓</div><div><div class="stat-val">1</div><div class="stat-label">Students</div></div></div>
+      </div>
+      <div class="card">
+        <p style="font-size:13px;color:var(--tx2)">Use the <strong>Content</strong> tab to manage lessons and quizzes. Use <strong>Students</strong> to review progress.</p>
+      </div>
+    `;
+  }
+
+  async function renderAdminDash(user, el) {
+    const profiles = await getAllProfiles();
+    const students = profiles.filter(p => p.role === 'student');
+    const teachers = profiles.filter(p => p.role === 'teacher');
+    const admins   = profiles.filter(p => p.role === 'admin');
+    el.innerHTML = `
+      <div class="motiv-bar">
+        <div class="motiv-icon">🛡️</div>
+        <div>
+          <div class="motiv-text">Admin dashboard — assign and manage user roles.</div>
+          <div class="motiv-sub">Click "User Roles" in the sidebar to manage access.</div>
+        </div>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="stat-icon" style="background:var(--math-bg)">👥</div><div><div class="stat-val">${profiles.length}</div><div class="stat-label">Total users</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--sci-bg)">👩‍🏫</div><div><div class="stat-val">${teachers.length}</div><div class="stat-label">Teachers</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--eng-bg)">🎒</div><div><div class="stat-val">${students.length}</div><div class="stat-label">Students</div></div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--acc-bg)">🛡️</div><div><div class="stat-val">${admins.length}</div><div class="stat-label">Admins</div></div></div>
+      </div>
+    `;
+  }
+  </script>
+</body>
+</html>

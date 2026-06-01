@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LearnSpark – Sign In</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div class="login-page">
+    <div class="login-card">
+
+      <div class="login-logo">
+        <div class="login-spark">✦</div>
+        <div class="login-title">LearnSpark</div>
+        <div class="login-sub">Grade 6 Summer Learning Portal</div>
+      </div>
+
+      <div style="font-weight:800;font-size:11px;color:var(--tx2);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">
+        Sign in as
+      </div>
+      <div class="role-picker">
+        <div class="role-btn" data-role="student"><span class="role-icon">🎒</span>Student</div>
+        <div class="role-btn" data-role="teacher"><span class="role-icon">👩‍🏫</span>Teacher</div>
+        <div class="role-btn" data-role="admin"><span class="role-icon">🛡️</span>Admin</div>
+      </div>
+
+      <form id="login-form" novalidate>
+        <div class="form-group">
+          <label class="form-label" for="username">Username</label>
+          <input class="form-input" id="username" type="text" placeholder="Enter your username" autocomplete="username" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="password">Password</label>
+          <input class="form-input" id="password" type="password" placeholder="Enter your password" autocomplete="current-password" required>
+        </div>
+        <div class="error-msg" id="error-msg"></div>
+        <button class="btn btn-primary btn-block" type="submit">Sign In</button>
+      </form>
+
+      <div class="demo-hint">
+        <strong>Demo accounts</strong><br>
+        Student: <strong>layla</strong> / <strong>learn2025</strong><br>
+        Teacher: <strong>msfatima</strong> / <strong>teach2025</strong><br>
+        Admin: <strong>admin</strong> / <strong>admin2025</strong>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    // If already logged in, redirect away from login page
+    (async () => {
+      const user = await getSessionUser();
+      if (user) {
+        window.location.href = user.role === 'admin' ? 'admin.html' : 'dashboard.html';
+      }
+    })();
+  </script>
+</body>
+</html>

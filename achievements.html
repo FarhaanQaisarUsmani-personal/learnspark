@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LearnSpark – Achievements</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <div id="toast"></div>
+  <div id="loading"><div class="spinner"></div><div class="loading-text">Loading achievements…</div></div>
+  <div class="app-wrap">
+    <nav class="sidebar" id="sidebar"></nav>
+    <div class="main-area">
+      <header class="topbar" id="topbar"></header>
+      <main class="page" id="page-content"></main>
+    </div>
+  </div>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="js/supabase.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/data.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+  (async () => {
+    const user = await requireAuth(['student']);
+    if (!user) return;
+    buildSidebar(user, 'achievements');
+    buildTopbar('Achievements');
+
+    const earned = await getBadges(user.id);
+    const el = document.getElementById('page-content');
+
+    el.innerHTML = `
+      <div class="motiv-bar">
+        <div class="motiv-icon">🏆</div>
+        <div>
+          <div class="motiv-text">You've earned ${earned.length} of ${BADGE_DEFS.length} badges!</div>
+          <div class="motiv-sub">Keep learning to unlock all achievements.</div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sec-title" style="margin-bottom:14px">All badges</div>
+        <div class="badge-grid">
+          ${BADGE_DEFS.map(b => {
+            const isEarned = earned.includes(b.id);
+            return `<div class="badge-item ${isEarned ? 'earned' : ''}">
+              <div class="badge-icon" style="${isEarned ? '' : 'filter:grayscale(1) opacity(.35)'}">${b.icon}</div>
+              <div class="badge-name">${b.name}</div>
+              <div class="badge-desc">${b.desc}</div>
+              <div class="badge-status">${isEarned ? '✓ Earned' : 'Locked 🔒'}</div>
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    `;
+    hideLoading();
+  })();
+  </script>
+</body>
+</html>
