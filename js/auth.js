@@ -5,26 +5,13 @@ document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('login-form');
   if (!form) return;
 
-  // Role selector auto-fills demo credentials
-  const roleBtns = document.querySelectorAll('.role-btn');
-  const usernameInput = document.getElementById('username');
-  const passwordInput = document.getElementById('password');
-  const errorMsg = document.getElementById('error-msg');
-
-  const demoCreds = {
-    student: { username: 'layla', password: 'learn2025' },
-    teacher: { username: 'msfatima', password: 'teach2025' },
-    admin:   { username: 'admin',   password: 'admin2025' },
-  };
-
-  roleBtns.forEach(btn => {
+  let selectedRole = null;
+  document.querySelectorAll('.role-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      roleBtns.forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      const role = btn.dataset.role;
-      usernameInput.value = demoCreds[role].username;
-      passwordInput.value = demoCreds[role].password;
-      errorMsg.style.display = 'none';
+      selectedRole = btn.dataset.role;
+      document.getElementById('error-msg').style.display = 'none';
     });
   });
 

@@ -204,7 +204,7 @@ img{display:block;max-width:100%}
   background-repeat:no-repeat;background-position:right 12px center;
 }
 .error-msg{color:var(--err);font-size:12px;font-weight:700;margin-top:-8px;margin-bottom:10px;display:none}
-.demo-hint{font-size:10.5px;color:var(--tx3);text-align:center;margin-top:14px;line-height:1.8;background:var(--bg);border-radius:8px;padding:10px}
+
 
 /* ── Stats row ── */
 .stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
