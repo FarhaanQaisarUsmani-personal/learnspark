@@ -5,15 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('login-form');
   if (!form) return;
 
-  let selectedRole = null;
-  document.querySelectorAll('.role-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      document.querySelectorAll('.role-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedRole = btn.dataset.role;
-      document.getElementById('error-msg').style.display = 'none';
-    });
-  });
+  const errorMsg = document.getElementById('error-msg');
 
   // Login form submit
   form.addEventListener('submit', async (e) => {
