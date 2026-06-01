@@ -5,10 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LearnSpark – Content Manager</title>
   <link rel="stylesheet" href="css/styles.css">
+  <style>
+    .editor-wrap{display:flex;gap:16px;align-items:flex-start}
+    .subject-list{width:190px;flex-shrink:0}
+    .subject-pill{padding:10px 13px;border-radius:10px;border:1.5px solid var(--border);background:var(--surf);cursor:pointer;font-weight:700;font-size:13px;color:var(--tx2);margin-bottom:6px;display:flex;align-items:center;gap:8px;transition:all .13s;user-select:none}
+    .subject-pill:hover{border-color:var(--math);color:var(--math)}
+    .subject-pill.active{background:var(--math-bg);border-color:var(--math);color:var(--math)}
+    .week-list{width:190px;flex-shrink:0}
+    .week-pill{padding:9px 12px;border-radius:9px;border:1.5px solid var(--border);background:var(--surf);cursor:pointer;font-weight:700;font-size:12px;color:var(--tx2);margin-bottom:5px;transition:all .13s;user-select:none}
+    .week-pill:hover{border-color:var(--math);color:var(--math)}
+    .week-pill.active{background:var(--math-bg);border-color:var(--math);color:var(--math)}
+    .editor-panel{flex:1;min-width:0}
+    .edit-section{background:var(--surf);border:1.5px solid var(--border);border-radius:var(--rl);padding:20px;margin-bottom:14px}
+    .edit-section-title{font-weight:900;font-size:14px;color:var(--tx);margin-bottom:14px;display:flex;align-items:center;justify-content:space-between}
+    textarea.form-input{resize:vertical;min-height:80px;line-height:1.5}
+    .obj-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+    .obj-row input{flex:1}
+    .q-block{border:1.5px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px;background:var(--surf2)}
+    .q-block-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+    .opt-row{display:flex;align-items:center;gap:8px;margin-bottom:7px}
+    .opt-row input[type=text]{flex:1}
+    .opt-row input[type=radio]{width:16px;height:16px;accent-color:var(--math);flex-shrink:0}
+    .correct-label{font-size:11px;font-weight:800;color:var(--tx3);flex-shrink:0}
+    .res-upload-row{border:2px dashed var(--border);border-radius:10px;padding:18px;text-align:center;cursor:pointer;transition:border .13s;margin-bottom:10px}
+    .res-upload-row:hover{border-color:var(--math)}
+    .res-upload-row input[type=file]{display:none}
+    .res-item{display:flex;align-items:center;gap:10px;padding:10px 13px;border:1.5px solid var(--border);border-radius:9px;background:var(--surf);margin-bottom:7px}
+    .uploading-bar{height:4px;background:var(--math-bg);border-radius:2px;margin-top:6px;overflow:hidden}
+    .uploading-fill{height:100%;background:var(--math);border-radius:2px;animation:prog 1.5s ease infinite}
+    @keyframes prog{0%{width:0%}100%{width:100%}}
+    .pill-new{padding:5px 11px;border-radius:20px;border:1.5px dashed var(--border);background:transparent;font-size:11px;font-weight:800;color:var(--tx3);cursor:pointer;transition:all .13s}
+    .pill-new:hover{border-color:var(--math);color:var(--math)}
+    .save-row{display:flex;gap:8px;align-items:center;margin-top:6px}
+    .saved-badge{font-size:11px;font-weight:800;color:var(--ok);display:none}
+  </style>
 </head>
 <body>
   <div id="toast"></div>
-  <div id="loading"><div class="spinner"></div><div class="loading-text">Loading content…</div></div>
+  <div id="loading"><div class="spinner"></div><div class="loading-text">Loading content manager…</div></div>
+
   <div class="app-wrap">
     <nav class="sidebar" id="sidebar"></nav>
     <div class="main-area">
@@ -23,7 +58,7 @@
   <script src="js/data.js"></script>
   <script src="js/utils.js"></script>
   <script>
-  let currentUser, allSubjects, allWeeks = [];
+  let currentUser, subjects = [], weeksBySubject = {}, activeSubjectIdx = 0, activeWeekId = null;
   let activeTab = 'lessons';
 
   (async () => {
@@ -32,17 +67,21 @@
     buildSidebar(currentUser, 'teacher');
     buildTopbar('Content Manager');
 
-    allSubjects = await getSubjects();
-    for (const s of allSubjects) {
-      const weeks = await getWeeksBySubject(s.id);
-      allWeeks.push(...weeks.map(w => ({ ...w, subjectSlug: s.slug, subjectName: s.name })));
+    subjects = await getSubjects();
+    for (const s of subjects) {
+      weeksBySubject[s.id] = await getWeeksBySubject(s.id);
+    }
+    if (subjects.length) {
+      const firstSubject = subjects[0];
+      activeWeekId = weeksBySubject[firstSubject.id]?.[0]?.id || null;
     }
 
-    renderPage();
+    renderShell();
     hideLoading();
   })();
 
-  function renderPage() {
+  // ── SHELL (tabs + subject/week pickers) ──
+  function renderShell() {
     const el = document.getElementById('page-content');
     el.innerHTML = `
       <div class="week-tabs" style="margin-bottom:20px">
@@ -50,115 +89,448 @@
         <div class="week-tab ${activeTab==='quizzes'?'active':''}" data-tab="quizzes">🎯 Quizzes</div>
         <div class="week-tab ${activeTab==='resources'?'active':''}" data-tab="resources">📥 Resources</div>
       </div>
-      <div id="tab-content"></div>
+      <div class="editor-wrap">
+        <div class="subject-list" id="subject-list"></div>
+        <div class="week-list" id="week-list"></div>
+        <div class="editor-panel" id="editor-panel"><p style="color:var(--tx3);font-size:13px">Select a week to start editing.</p></div>
+      </div>
     `;
-
     el.querySelectorAll('[data-tab]').forEach(btn => {
-      btn.addEventListener('click', () => {
-        activeTab = btn.dataset.tab;
-        renderPage();
+      btn.addEventListener('click', () => { activeTab = btn.dataset.tab; renderShell(); });
+    });
+    renderSubjectList();
+    renderWeekList();
+    if (activeWeekId) renderEditor();
+  }
+
+  function renderSubjectList() {
+    const el = document.getElementById('subject-list');
+    el.innerHTML = subjects.map((s, i) => `
+      <div class="subject-pill ${i===activeSubjectIdx?'active':''}" data-si="${i}">
+        <span>${SUBJECT_META[s.slug]?.icon || '📚'}</span> ${s.name}
+      </div>`).join('');
+    el.querySelectorAll('[data-si]').forEach(pill => {
+      pill.addEventListener('click', () => {
+        activeSubjectIdx = parseInt(pill.dataset.si);
+        const s = subjects[activeSubjectIdx];
+        activeWeekId = weeksBySubject[s.id]?.[0]?.id || null;
+        renderSubjectList();
+        renderWeekList();
+        if (activeWeekId) renderEditor();
+        else document.getElementById('editor-panel').innerHTML = '<p style="color:var(--tx3);font-size:13px">No weeks yet. Add one below.</p>';
       });
     });
-
-    const tc = el.querySelector('#tab-content');
-    if (activeTab === 'lessons')   renderLessons(tc);
-    if (activeTab === 'quizzes')   renderQuizzes(tc);
-    if (activeTab === 'resources') renderResources(tc);
   }
 
-  function renderLessons(el) {
-    el.innerHTML = `
-      <div class="card">
-        <div class="sec-hdr">
-          <div class="sec-title">All lesson weeks</div>
-        </div>
-        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
-          To edit lesson content, update the <strong>weeks</strong> table directly in your
-          Supabase dashboard → Table Editor. Objectives live in <strong>learning_objectives</strong>.
-        </p>
-        <table class="data-table">
-          <thead>
-            <tr><th>Subject</th><th>Week</th><th>Title</th><th>Overview</th></tr>
-          </thead>
-          <tbody>
-            ${allWeeks.map(w => `
-              <tr>
-                <td>${subjTag(w.subjectSlug)}</td>
-                <td style="font-weight:800">Week ${w.week_number}</td>
-                <td style="font-weight:700">${w.title}</td>
-                <td style="color:var(--tx3);font-size:12px;max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
-                  ${w.overview || '—'}
-                </td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+  function renderWeekList() {
+    const el = document.getElementById('week-list');
+    const s = subjects[activeSubjectIdx];
+    if (!s) { el.innerHTML = ''; return; }
+    const weeks = weeksBySubject[s.id] || [];
+    el.innerHTML = weeks.map(w => `
+      <div class="week-pill ${w.id===activeWeekId?'active':''}" data-wid="${w.id}">
+        Week ${w.week_number}: ${w.title}
+      </div>`).join('')
+      + `<button class="pill-new" id="add-week-btn">+ Add week</button>`;
+    el.querySelectorAll('[data-wid]').forEach(pill => {
+      pill.addEventListener('click', () => {
+        activeWeekId = pill.dataset.wid;
+        renderWeekList();
+        renderEditor();
+      });
+    });
+    el.querySelector('#add-week-btn').addEventListener('click', async () => {
+      const title = prompt('Week title:');
+      if (!title) return;
+      const nextNum = weeks.length + 1;
+      showLoading('Adding week…');
+      const newWeek = await insertWeek(s.id, nextNum, title);
+      if (newWeek) {
+        weeksBySubject[s.id].push(newWeek);
+        activeWeekId = newWeek.id;
+        renderWeekList();
+        renderEditor();
+        toast('✅ Week added!');
+      } else toast('❌ Failed to add week.');
+      hideLoading();
+    });
   }
 
-  function renderQuizzes(el) {
-    el.innerHTML = `
-      <div class="card">
-        <div class="sec-hdr">
-          <div class="sec-title">Quiz questions per week</div>
-        </div>
-        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
-          Add or edit questions in the <strong>quiz_questions</strong> table and options in
-          <strong>quiz_options</strong> in your Supabase dashboard. Mark exactly one option
-          per question as <code>is_correct = true</code>.
-        </p>
-        <table class="data-table">
-          <thead>
-            <tr><th>Subject</th><th>Week</th><th>Title</th><th>Status</th></tr>
-          </thead>
-          <tbody>
-            ${allWeeks.map(w => `
-              <tr>
-                <td>${subjTag(w.subjectSlug)}</td>
-                <td style="font-weight:800">Week ${w.week_number}</td>
-                <td style="font-weight:700">${w.title}</td>
-                <td><span class="tag tag-ok">Active</span></td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>
-    `;
+  // ── EDITOR PANEL router ──
+  async function renderEditor() {
+    if (!activeWeekId) return;
+    if (activeTab === 'lessons')   await renderLessonEditor();
+    if (activeTab === 'quizzes')   await renderQuizEditor();
+    if (activeTab === 'resources') await renderResourceEditor();
   }
 
-  async function renderResources(el) {
-    el.innerHTML = `<div class="card"><p style="color:var(--tx3);font-size:13px">Loading resources…</p></div>`;
-
-    // Fetch resources for all weeks
-    let allResources = [];
-    for (const w of allWeeks) {
-      const res = await getResources(w.id);
-      allResources.push(...res.map(r => ({ ...r, weekTitle: w.title, weekNum: w.week_number, subjectSlug: w.subjectSlug })));
-    }
+  // ── LESSON EDITOR ──
+  async function renderLessonEditor() {
+    const el = document.getElementById('editor-panel');
+    el.innerHTML = '<p style="color:var(--tx3);font-size:13px">Loading…</p>';
+    const [week, objectives] = await Promise.all([
+      getWeek(activeWeekId),
+      getLearningObjectives(activeWeekId),
+    ]);
+    if (!week) { el.innerHTML = '<p style="color:var(--err)">Could not load week.</p>'; return; }
 
     el.innerHTML = `
-      <div class="card">
-        <div class="sec-hdr">
-          <div class="sec-title">Resource library</div>
+      <!-- Lesson basics -->
+      <div class="edit-section">
+        <div class="edit-section-title">📝 Lesson details
+          <button class="btn btn-danger btn-sm" id="delete-week-btn">Delete week</button>
         </div>
-        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
-          Upload PDF files to your Supabase Storage bucket named <strong>resources</strong>,
-          then add a row to the <strong>resources</strong> table with the storage path.
-          Students will get a signed download link automatically.
-        </p>
-        ${allResources.length ? allResources.map(r => `
-          <div class="res-row">
-            <div class="res-icon" style="background:var(--${r.subjectSlug==='sci'?'sci':r.subjectSlug==='eng'?'eng':'math'}-bg)">${r.icon || '📄'}</div>
-            <div style="flex:1">
-              <div class="res-name">${r.name}</div>
-              <div class="res-type">
-                ${subjTag(r.subjectSlug)} · Week ${r.weekNum} · ${r.file_type || 'PDF'}
-                ${r.storage_path ? '' : '<span class="tag tag-warn" style="margin-left:6px">No file</span>'}
-              </div>
-            </div>
-          </div>`).join('')
-        : '<p style="font-size:13px;color:var(--tx3)">No resources added yet. Add rows to the resources table in Supabase.</p>'}
+        <div class="form-group">
+          <label class="form-label">Title</label>
+          <input class="form-input" id="week-title" value="${esc(week.title)}">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Overview (shown on subject page)</label>
+          <textarea class="form-input" id="week-overview" rows="3">${esc(week.overview||'')}</textarea>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Full lesson body (shown in lesson detail view)</label>
+          <textarea class="form-input" id="week-body" rows="6">${esc(week.lesson_body||'')}</textarea>
+        </div>
+        <div class="save-row">
+          <button class="btn btn-primary" id="save-lesson-btn">Save lesson</button>
+          <span class="saved-badge" id="lesson-saved">✓ Saved</span>
+        </div>
+      </div>
+
+      <!-- Objectives -->
+      <div class="edit-section">
+        <div class="edit-section-title">🎯 Learning objectives</div>
+        <div id="obj-list">
+          ${objectives.map(o => `
+            <div class="obj-row" data-oid="${o.id}">
+              <input class="form-input obj-input" value="${esc(o.objective_text)}" style="flex:1">
+              <button class="btn btn-outline btn-sm obj-save-btn">Save</button>
+              <button class="btn btn-danger btn-sm obj-del-btn">✕</button>
+            </div>`).join('')}
+        </div>
+        <button class="btn btn-outline btn-sm" id="add-obj-btn" style="margin-top:4px">+ Add objective</button>
       </div>
     `;
+
+    // Save lesson basics
+    el.querySelector('#save-lesson-btn').addEventListener('click', async () => {
+      const ok = await updateWeek(activeWeekId, {
+        title: el.querySelector('#week-title').value.trim(),
+        overview: el.querySelector('#week-overview').value.trim(),
+        lesson_body: el.querySelector('#week-body').value.trim(),
+      });
+      if (ok) {
+        // update local cache
+        const s = subjects[activeSubjectIdx];
+        const w = weeksBySubject[s.id].find(x => x.id === activeWeekId);
+        if (w) w.title = el.querySelector('#week-title').value.trim();
+        renderWeekList();
+        flashSaved('lesson-saved');
+        toast('✅ Lesson saved!');
+      } else toast('❌ Save failed.');
+    });
+
+    // Delete week
+    el.querySelector('#delete-week-btn').addEventListener('click', async () => {
+      if (!confirm('Delete this week and all its content? This cannot be undone.')) return;
+      showLoading('Deleting…');
+      const ok = await deleteWeek(activeWeekId);
+      if (ok) {
+        const s = subjects[activeSubjectIdx];
+        weeksBySubject[s.id] = weeksBySubject[s.id].filter(w => w.id !== activeWeekId);
+        activeWeekId = weeksBySubject[s.id][0]?.id || null;
+        renderWeekList();
+        if (activeWeekId) renderEditor();
+        else el.innerHTML = '<p style="color:var(--tx3);font-size:13px">No weeks. Add one.</p>';
+        toast('✅ Week deleted.');
+      } else toast('❌ Delete failed.');
+      hideLoading();
+    });
+
+    // Objective save / delete
+    bindObjectiveEvents(el, objectives);
+
+    // Add objective
+    el.querySelector('#add-obj-btn').addEventListener('click', async () => {
+      const text = prompt('Enter new objective:');
+      if (!text) return;
+      const list = el.querySelectorAll('[data-oid]');
+      const newObj = await insertObjective(activeWeekId, text, list.length + 1);
+      if (newObj) {
+        const row = document.createElement('div');
+        row.className = 'obj-row';
+        row.dataset.oid = newObj.id;
+        row.innerHTML = `
+          <input class="form-input obj-input" value="${esc(newObj.objective_text)}" style="flex:1">
+          <button class="btn btn-outline btn-sm obj-save-btn">Save</button>
+          <button class="btn btn-danger btn-sm obj-del-btn">✕</button>`;
+        el.querySelector('#obj-list').appendChild(row);
+        bindObjectiveEvents(el, []);
+        toast('✅ Objective added!');
+      } else toast('❌ Failed to add objective.');
+    });
+  }
+
+  function bindObjectiveEvents(el, objectives) {
+    el.querySelectorAll('.obj-save-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const row = btn.closest('[data-oid]');
+        const id = row.dataset.oid;
+        const text = row.querySelector('.obj-input').value.trim();
+        const ok = await updateObjective(id, text);
+        if (ok) toast('✅ Objective saved!'); else toast('❌ Failed.');
+      };
+    });
+    el.querySelectorAll('.obj-del-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Delete this objective?')) return;
+        const row = btn.closest('[data-oid]');
+        const ok = await deleteObjective(row.dataset.oid);
+        if (ok) { row.remove(); toast('✅ Deleted.'); } else toast('❌ Failed.');
+      };
+    });
+  }
+
+  // ── QUIZ EDITOR ──
+  async function renderQuizEditor() {
+    const el = document.getElementById('editor-panel');
+    el.innerHTML = '<p style="color:var(--tx3);font-size:13px">Loading quiz…</p>';
+    const questions = await getQuizQuestions(activeWeekId);
+
+    el.innerHTML = `
+      <div class="edit-section">
+        <div class="edit-section-title">🎯 Quiz questions
+          <button class="btn btn-primary btn-sm" id="add-q-btn">+ Add question</button>
+        </div>
+        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
+          Each question needs at least 2 options. Mark exactly one as the correct answer using the radio button.
+        </p>
+        <div id="questions-list">
+          ${questions.map((q, qi) => renderQuestionBlock(q, qi)).join('')}
+        </div>
+      </div>
+    `;
+
+    bindQuizEvents(el);
+
+    el.querySelector('#add-q-btn').addEventListener('click', async () => {
+      const text = prompt('Enter question text:');
+      if (!text) return;
+      const existing = el.querySelectorAll('.q-block').length;
+      const newQ = await insertQuizQuestion(activeWeekId, text, existing + 1);
+      if (!newQ) { toast('❌ Failed to add question.'); return; }
+      // Add 4 blank options
+      const opts = [];
+      for (let i = 0; i < 4; i++) {
+        const o = await insertQuizOption(newQ.id, '', i === 0, i + 1);
+        if (o) opts.push(o);
+      }
+      newQ.quiz_options = opts;
+      const div = document.createElement('div');
+      div.innerHTML = renderQuestionBlock(newQ, existing);
+      el.querySelector('#questions-list').appendChild(div.firstElementChild);
+      bindQuizEvents(el);
+      toast('✅ Question added! Fill in the options and save.');
+    });
+  }
+
+  function renderQuestionBlock(q, qi) {
+    const opts = q.quiz_options || [];
+    return `
+      <div class="q-block" data-qid="${q.id}">
+        <div class="q-block-hdr">
+          <span style="font-weight:800;font-size:12px;color:var(--tx3)">Q${qi + 1}</span>
+          <button class="btn btn-danger btn-sm q-del-btn">Delete question</button>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Question text</label>
+          <input class="form-input q-text" value="${esc(q.question_text)}">
+        </div>
+        <div style="font-size:11px;font-weight:800;color:var(--tx3);text-transform:uppercase;letter-spacing:.04em;margin-bottom:8px">
+          Options — select the correct answer
+        </div>
+        <div class="opts-list">
+          ${opts.map((o, oi) => `
+            <div class="opt-row" data-oid="${o.id}">
+              <input type="radio" name="correct-${q.id}" class="opt-radio" ${o.is_correct ? 'checked' : ''} title="Mark as correct">
+              <span class="correct-label">Correct</span>
+              <input type="text" class="form-input opt-text" value="${esc(o.option_text)}" placeholder="Option ${oi + 1}">
+              <button class="btn btn-danger btn-sm opt-del-btn">✕</button>
+            </div>`).join('')}
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <button class="btn btn-outline btn-sm add-opt-btn">+ Add option</button>
+          <button class="btn btn-primary btn-sm save-q-btn">Save question</button>
+        </div>
+      </div>`;
+  }
+
+  function bindQuizEvents(el) {
+    // Save question + all its options
+    el.querySelectorAll('.save-q-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const block = btn.closest('.q-block');
+        const qid = block.dataset.qid;
+        const qText = block.querySelector('.q-text').value.trim();
+        if (!qText) { toast('Question text cannot be empty.'); return; }
+        await updateQuizQuestion(qid, qText);
+        const optRows = block.querySelectorAll('[data-oid]');
+        const radios = block.querySelectorAll('.opt-radio');
+        const checkedIdx = Array.from(radios).findIndex(r => r.checked);
+        for (let i = 0; i < optRows.length; i++) {
+          const oid = optRows[i].dataset.oid;
+          const text = optRows[i].querySelector('.opt-text').value.trim();
+          const isCorrect = i === checkedIdx;
+          await updateQuizOption(oid, text, isCorrect);
+        }
+        toast('✅ Question saved!');
+      };
+    });
+
+    // Delete question
+    el.querySelectorAll('.q-del-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Delete this question and all its options?')) return;
+        const block = btn.closest('.q-block');
+        const ok = await deleteQuizQuestion(block.dataset.qid);
+        if (ok) { block.remove(); toast('✅ Question deleted.'); } else toast('❌ Failed.');
+      };
+    });
+
+    // Add option to a question
+    el.querySelectorAll('.add-opt-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const block = btn.closest('.q-block');
+        const qid = block.dataset.qid;
+        const existing = block.querySelectorAll('[data-oid]').length;
+        const newOpt = await insertQuizOption(qid, '', false, existing + 1);
+        if (!newOpt) { toast('❌ Failed to add option.'); return; }
+        const row = document.createElement('div');
+        row.className = 'opt-row';
+        row.dataset.oid = newOpt.id;
+        row.innerHTML = `
+          <input type="radio" name="correct-${qid}" class="opt-radio" title="Mark as correct">
+          <span class="correct-label">Correct</span>
+          <input type="text" class="form-input opt-text" value="" placeholder="New option">
+          <button class="btn btn-danger btn-sm opt-del-btn">✕</button>`;
+        block.querySelector('.opts-list').appendChild(row);
+        bindQuizEvents(el);
+      };
+    });
+
+    // Delete option
+    el.querySelectorAll('.opt-del-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const row = btn.closest('[data-oid]');
+        const ok = await deleteQuizOption(row.dataset.oid);
+        if (ok) { row.remove(); toast('✅ Option deleted.'); } else toast('❌ Failed.');
+      };
+    });
+  }
+
+  // ── RESOURCE EDITOR ──
+  async function renderResourceEditor() {
+    const el = document.getElementById('editor-panel');
+    el.innerHTML = '<p style="color:var(--tx3);font-size:13px">Loading resources…</p>';
+    const s = subjects[activeSubjectIdx];
+    const week = await getWeek(activeWeekId);
+    const resources = await getResources(activeWeekId);
+
+    el.innerHTML = `
+      <div class="edit-section">
+        <div class="edit-section-title">📥 Resources for Week ${week?.week_number}: ${week?.title}</div>
+        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
+          Upload PDF, PPT, or image files. Files are stored in Supabase Storage and students get a secure download link.
+          Max file size: 50MB.
+        </p>
+
+        <!-- Upload area -->
+        <label class="res-upload-row" id="upload-area">
+          <input type="file" id="file-input" accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg">
+          <div style="font-size:24px;margin-bottom:6px">📂</div>
+          <div style="font-weight:800;font-size:13px;color:var(--tx2)">Click to upload a file</div>
+          <div style="font-size:11px;color:var(--tx3);margin-top:3px">PDF, PPT, DOC, PNG, JPG supported</div>
+          <div class="uploading-bar" id="upload-progress" style="display:none"><div class="uploading-fill"></div></div>
+        </label>
+
+        <!-- Existing resources -->
+        <div id="resource-list">
+          ${resources.length ? resources.map(r => resourceRow(r)).join('') : '<p style="font-size:13px;color:var(--tx3)">No resources yet. Upload one above.</p>'}
+        </div>
+      </div>
+    `;
+
+    // File upload
+    el.querySelector('#file-input').addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const prog = el.querySelector('#upload-progress');
+      prog.style.display = 'block';
+      toast('Uploading…');
+
+      const path = await uploadResourceFile(file, s.slug, week?.week_number || 1);
+      prog.style.display = 'none';
+
+      if (!path) { toast('❌ Upload failed. Check Storage bucket exists and is named "resources".'); return; }
+
+      const ext = file.name.split('.').pop().toUpperCase();
+      const icon = ext === 'PDF' ? '📄' : ext.includes('PP') ? '📋' : ext.includes('DOC') ? '📝' : '🖼️';
+      const existing = el.querySelectorAll('.res-item').length;
+      const newRes = await insertResource(activeWeekId, file.name.replace(/\.[^.]+$/, ''), ext, icon, path, existing + 1);
+
+      if (newRes) {
+        const div = document.createElement('div');
+        div.innerHTML = resourceRow(newRes);
+        el.querySelector('#resource-list').appendChild(div.firstElementChild);
+        bindResourceEvents(el);
+        toast('✅ File uploaded and saved!');
+      } else toast('❌ File uploaded but failed to save record.');
+      e.target.value = '';
+    });
+
+    bindResourceEvents(el);
+  }
+
+  function resourceRow(r) {
+    return `<div class="res-item" data-rid="${r.id}" data-path="${r.storage_path || ''}">
+      <span style="font-size:20px">${r.icon || '📄'}</span>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(r.name)}</div>
+        <div style="font-size:11px;color:var(--tx3)">${r.file_type || 'FILE'} ${r.storage_path ? '· uploaded' : '· no file'}</div>
+      </div>
+      ${r.storage_path ? `<button class="btn btn-outline btn-sm res-dl-btn">Preview</button>` : ''}
+      <button class="btn btn-danger btn-sm res-del-btn">✕</button>
+    </div>`;
+  }
+
+  function bindResourceEvents(el) {
+    el.querySelectorAll('.res-del-btn').forEach(btn => {
+      btn.onclick = async () => {
+        if (!confirm('Remove this resource?')) return;
+        const row = btn.closest('[data-rid]');
+        const ok = await deleteResource(row.dataset.rid, row.dataset.path);
+        if (ok) { row.remove(); toast('✅ Resource removed.'); } else toast('❌ Failed.');
+      };
+    });
+    el.querySelectorAll('.res-dl-btn').forEach(btn => {
+      btn.onclick = async () => {
+        const row = btn.closest('[data-rid]');
+        const url = await getDownloadUrl(row.dataset.path);
+        if (url) window.open(url, '_blank'); else toast('❌ Could not get file URL.');
+      };
+    });
+  }
+
+  // ── helpers ──
+  function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+  function flashSaved(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.display = 'inline';
+    setTimeout(() => el.style.display = 'none', 2000);
   }
   </script>
 </body>
