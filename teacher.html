@@ -439,57 +439,131 @@
 
     el.innerHTML = `
       <div class="edit-section">
-        <div class="edit-section-title">📥 Resources for Week ${week?.week_number}: ${week?.title}</div>
-        <p style="font-size:12px;color:var(--tx3);margin-bottom:14px">
-          Upload PDF, PPT, or image files. Files are stored in Supabase Storage and students get a secure download link.
-          Max file size: 50MB.
-        </p>
+        <div class="edit-section-title">📥 Resources — Week ${week?.week_number}: ${week?.title}</div>
 
-        <!-- Upload area -->
-        <label class="res-upload-row" id="upload-area">
-          <input type="file" id="file-input" accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg">
-          <div style="font-size:24px;margin-bottom:6px">📂</div>
-          <div style="font-weight:800;font-size:13px;color:var(--tx2)">Click to upload a file</div>
-          <div style="font-size:11px;color:var(--tx3);margin-top:3px">PDF, PPT, DOC, PNG, JPG supported</div>
-          <div class="uploading-bar" id="upload-progress" style="display:none"><div class="uploading-fill"></div></div>
-        </label>
+        <!-- Step 1: display name -->
+        <div class="form-group">
+          <label class="form-label">Display name for students</label>
+          <input class="form-input" id="res-display-name" placeholder="e.g. Fractions Worksheet" style="max-width:360px">
+        </div>
+
+        <!-- Step 2: pick and upload file -->
+        <div class="form-group">
+          <label class="form-label">File</label>
+          <div class="res-upload-row" id="upload-drop-area">
+            <input type="file" id="file-input" accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg,.mp4">
+            <div id="upload-area-inner">
+              <div style="font-size:28px;margin-bottom:6px">📂</div>
+              <div style="font-weight:800;font-size:13px;color:var(--tx2)">Click or drag a file here</div>
+              <div style="font-size:11px;color:var(--tx3);margin-top:3px">PDF, PPT, DOC, PNG, JPG · max 50MB</div>
+            </div>
+            <div class="uploading-bar" id="upload-progress" style="display:none"><div class="uploading-fill"></div></div>
+            <div id="upload-status" style="font-size:12px;font-weight:800;margin-top:8px;display:none"></div>
+          </div>
+        </div>
 
         <!-- Existing resources -->
+        <div style="font-weight:800;font-size:13px;color:var(--tx);margin-bottom:10px;margin-top:4px">
+          Uploaded files (${resources.length})
+        </div>
         <div id="resource-list">
-          ${resources.length ? resources.map(r => resourceRow(r)).join('') : '<p style="font-size:13px;color:var(--tx3)">No resources yet. Upload one above.</p>'}
+          ${resources.length
+            ? resources.map(r => resourceRow(r)).join('')
+            : '<p style="font-size:13px;color:var(--tx3);padding:10px 0">No resources yet. Upload one above.</p>'}
         </div>
       </div>
     `;
 
-    // File upload
-    el.querySelector('#file-input').addEventListener('change', async (e) => {
+    const dropArea = el.querySelector('#upload-drop-area');
+    const fileInput = el.querySelector('#file-input');
+
+    // Click to open file picker
+    dropArea.addEventListener('click', () => fileInput.click());
+
+    // Drag and drop
+    dropArea.addEventListener('dragover', e => { e.preventDefault(); dropArea.style.borderColor = 'var(--math)'; });
+    dropArea.addEventListener('dragleave', () => dropArea.style.borderColor = '');
+    dropArea.addEventListener('drop', e => {
+      e.preventDefault();
+      dropArea.style.borderColor = '';
+      const file = e.dataTransfer.files[0];
+      if (file) handleUpload(file, s, week, el);
+    });
+
+    fileInput.addEventListener('change', e => {
       const file = e.target.files[0];
-      if (!file) return;
-      const prog = el.querySelector('#upload-progress');
-      prog.style.display = 'block';
-      toast('Uploading…');
-
-      const path = await uploadResourceFile(file, s.slug, week?.week_number || 1);
-      prog.style.display = 'none';
-
-      if (!path) { toast('❌ Upload failed. Check Storage bucket exists and is named "resources".'); return; }
-
-      const ext = file.name.split('.').pop().toUpperCase();
-      const icon = ext === 'PDF' ? '📄' : ext.includes('PP') ? '📋' : ext.includes('DOC') ? '📝' : '🖼️';
-      const existing = el.querySelectorAll('.res-item').length;
-      const newRes = await insertResource(activeWeekId, file.name.replace(/\.[^.]+$/, ''), ext, icon, path, existing + 1);
-
-      if (newRes) {
-        const div = document.createElement('div');
-        div.innerHTML = resourceRow(newRes);
-        el.querySelector('#resource-list').appendChild(div.firstElementChild);
-        bindResourceEvents(el);
-        toast('✅ File uploaded and saved!');
-      } else toast('❌ File uploaded but failed to save record.');
+      if (file) handleUpload(file, s, week, el);
       e.target.value = '';
     });
 
     bindResourceEvents(el);
+  }
+
+  async function handleUpload(file, s, week, el) {
+    const displayName = el.querySelector('#res-display-name').value.trim()
+      || file.name.replace(/\.[^.]+$/, ''); // fall back to filename without extension
+
+    // Size check — 50MB
+    if (file.size > 52428800) {
+      setUploadStatus(el, '❌ File is too large. Maximum size is 50MB.', 'var(--err)');
+      return;
+    }
+
+    const prog = el.querySelector('#upload-progress');
+    prog.style.display = 'block';
+    setUploadStatus(el, '⏳ Uploading…', 'var(--tx3)');
+
+    let path;
+    try {
+      path = await uploadResourceFile(file, s.slug, week?.week_number || 1);
+    } catch (err) {
+      prog.style.display = 'none';
+      setUploadStatus(el, `❌ ${err.message}`, 'var(--err)');
+      return;
+    }
+
+    prog.style.display = 'none';
+
+    const ext = file.name.split('.').pop().toUpperCase();
+    const icon = ext === 'PDF' ? '📄' : ext.includes('PP') ? '📋' : ext.includes('DOC') ? '📝' : ext === 'MP4' ? '🎬' : '🖼️';
+    const existing = el.querySelectorAll('.res-item').length;
+    let newRes;
+    try {
+      newRes = await insertResource(activeWeekId, displayName, ext, icon, path, existing + 1);
+    } catch(err) {
+      setUploadStatus(el, `❌ File uploaded but could not save record: ${err.message}`, 'var(--err)');
+      return;
+    }
+
+    if (newRes) {
+      // Remove "no resources" message if present
+      const empty = el.querySelector('#resource-list p');
+      if (empty) empty.remove();
+
+      const div = document.createElement('div');
+      div.innerHTML = resourceRow(newRes);
+      el.querySelector('#resource-list').appendChild(div.firstElementChild);
+      bindResourceEvents(el);
+
+      // Update count label
+      const countEl = el.querySelector('[style*="Uploaded files"]');
+      if (countEl) countEl.textContent = `Uploaded files (${el.querySelectorAll('.res-item').length})`;
+
+      // Reset form
+      el.querySelector('#res-display-name').value = '';
+      setUploadStatus(el, `✅ "${displayName}" uploaded successfully!`, 'var(--ok)');
+      setTimeout(() => setUploadStatus(el, '', ''), 3000);
+    } else {
+      setUploadStatus(el, '❌ File uploaded but failed to save the record. Check Supabase resources table policies.', 'var(--err)');
+    }
+  }
+
+  function setUploadStatus(el, msg, color) {
+    const s = el.querySelector('#upload-status');
+    if (!s) return;
+    s.textContent = msg;
+    s.style.color = color;
+    s.style.display = msg ? 'block' : 'none';
   }
 
   function resourceRow(r) {
