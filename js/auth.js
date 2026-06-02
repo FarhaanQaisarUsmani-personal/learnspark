@@ -5,6 +5,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const form = document.getElementById('login-form');
   if (!form) return;
 
+  const usernameInput = document.getElementById('username');
+  const passwordInput = document.getElementById('password');
   const errorMsg = document.getElementById('error-msg');
 
   // Login form submit
